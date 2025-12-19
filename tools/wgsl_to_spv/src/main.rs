@@ -10,11 +10,12 @@ use std::{
 use bevy_shader::{Shader, ShaderImport};
 use naga::back::spv::{self, WriterFlags};
 use naga::valid::{Capabilities, ValidationFlags, Validator};
-use naga_oil::compose::{Composer, NagaModuleDescriptor, ShaderDefValue};
+use naga_oil::compose::{Composer, ShaderDefValue};
 use walkdir::WalkDir;
 
-/// Simple helper to compose WGSL using the repository's composer and emit SPIR-V
-/// or helpful diagnostics on failure.
+/// Helper to compose WGSL using the repository's composer and emit SPIR-V
+/// Emits helpful diagnostics on failure.
+/// Usage: wgsl_to_spv <input.wgsl> [output.spv] [--def NAME=VALUE]
 fn main() {
     if let Err(err) = run() {
         eprintln!("Error: {err}");
@@ -23,8 +24,8 @@ fn main() {
 }
 
 fn run() -> Result<(), Box<dyn Error>> {
-    // Syntax: wgsl_to_spv <input.wgsl> [output.spv] [--def NAME=VALUE]
     let mut args = env::args().skip(1);
+
     let src = match args.next() {
         Some(src) => src,
         None => {
@@ -32,10 +33,12 @@ fn run() -> Result<(), Box<dyn Error>> {
             exit(2);
         }
     };
-    let mut out = args.next().unwrap_or_else(|| "out.spv".to_string());
+
+    let out = args.next().unwrap_or_else(|| "out.spv".to_string());
 
     // Collect any shader defs provided as `--def NAME=VALUE` after the paths.
     let mut shader_defs_cli: HashMap<String, ShaderDefValue> = HashMap::new();
+
     for arg in args {
         if let Some(def) = arg.strip_prefix("--def") {
             let def = def.trim_start_matches('=');
@@ -64,7 +67,6 @@ fn run() -> Result<(), Box<dyn Error>> {
 
     let mut composer = Composer::non_validating().with_capabilities(Capabilities::all());
 
-    // Track which module files were added (for better diagnostics on error).
     let mut added_module_paths: Vec<PathBuf> = Vec::new();
     let mut visited_custom_modules = HashSet::new();
     let mut visited_asset_paths = HashSet::new();
@@ -96,10 +98,10 @@ fn run() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    // Ensure the entry shader itself is registered
+    // Confirm that entry shader is registered
     composer.add_composable_module((&root_shader).into())?;
 
-    // Merge CLI-provided shader defs with a few sensible defaults used in Bevy
+    // Merge the provided shader defs from CLI with sensible defaults for Bevy
     let mut shader_defs: HashMap<String, ShaderDefValue> = shader_defs_cli;
     shader_defs
         .entry("AVAILABLE_STORAGE_BUFFER_BINDINGS".to_string())
@@ -135,11 +137,12 @@ fn run() -> Result<(), Box<dyn Error>> {
         Err(e) => {
             eprintln!("Composer error: {e}");
 
-            // Dump entry shader and added modules for inspection
+            // On error, dump entry shader and added modules
             let dump_dir = Path::new("tools/wgsl_to_spv/module_dumps");
             let _ = fs::create_dir_all(dump_dir);
 
             let _ = fs::write(dump_dir.join("entry.wgsl"), root_shader.source.as_str());
+
             for p in &added_module_paths {
                 if let Ok(text) = fs::read_to_string(p) {
                     let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("module");
@@ -169,9 +172,11 @@ fn run() -> Result<(), Box<dyn Error>> {
 
     let mut writer = spv::Writer::new(&options)?;
     let mut words = Vec::new();
+
     writer.write(&naga_module, &info, None, &None, &mut words)?;
 
     let mut bytes = Vec::with_capacity(words.len() * 4);
+
     for w in words {
         bytes.extend_from_slice(&w.to_le_bytes());
     }
@@ -183,6 +188,7 @@ fn run() -> Result<(), Box<dyn Error>> {
 
 fn build_module_index() -> Result<HashMap<String, PathBuf>, Box<dyn Error>> {
     let mut index = HashMap::new();
+
     for root in ["crates", "assets"] {
         for entry in WalkDir::new(root)
             .into_iter()
@@ -190,11 +196,13 @@ fn build_module_index() -> Result<HashMap<String, PathBuf>, Box<dyn Error>> {
             .filter(|entry| entry.path().is_file())
         {
             let path = entry.path();
+
             if path.extension().and_then(|ext| ext.to_str()) != Some("wgsl") {
                 continue;
             }
 
             let contents = fs::read_to_string(path)?;
+
             for line in contents.lines() {
                 if let Some(module_name) = line.trim_start().strip_prefix("#define_import_path ") {
                     let module_name = module_name.trim().to_string();
@@ -332,9 +340,9 @@ fn resolve_asset_path(root: &Path, asset_path: &str) -> Result<PathBuf, Box<dyn 
     Err(format!("could not resolve asset import path {asset_path}").into())
 }
 
-/// A very small fallback inliner that replaces `#import` tokens by inlining the
-/// file found via `#define_import_path`. This is only used for diagnostics;
-/// prefer the composer for correctness.
+/// Fallback inline function to replace `#import` tokens by inlining the
+/// file found via `#define_import_path`. This is only intended as an aid for debugging;
+/// Refer to the composer for correct usage.
 fn compose_wgsl_simple(
     entry_text: &str,
     module_index: &HashMap<String, PathBuf>,

@@ -1,0 +1,23 @@
+name: SPIR-V validation
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  spirv-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y spirv-tools
+      - name: Build wgsl_to_spv
+        run: cargo build --manifest-path tools/wgsl_to_spv/Cargo.toml
+      - name: Run SPIR-V validation
+        run: bash tools/ci/validate_spirv.sh
