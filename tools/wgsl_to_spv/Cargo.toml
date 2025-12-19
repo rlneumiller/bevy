@@ -1,0 +1,11 @@
+[package]
+name = "wgsl_to_spv"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy_shader = { path = "../../crates/bevy_shader" }
+naga_oil = "0.20"
+walkdir = "2"
+# Match the workspace naga used by Bevy and enable spv-out
+naga = { version = "27", features = ["spv-out"] }
