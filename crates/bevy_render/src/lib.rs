@@ -186,9 +186,8 @@ bitflags! {
 
         /// Participation in prepasses (depth / normal / motion vectors).
         ///
-        /// Note: today, Bevy's "prepass" is commonly executed as a single pass that can write
-        /// multiple outputs depending on view configuration. These bits exist to allow more
-        /// fine-grained control and future expansion.
+        /// These bits allow fine-grained control over which prepass outputs an entity contributes to.
+        /// For example, an entity can participate in the depth prepass but opt out of the normal prepass.
         const PREPASS = Self::DEPTH_PREPASS.bits()
             | Self::NORMAL_PREPASS.bits()
             | Self::MOTION_VECTOR_PREPASS.bits();

@@ -8,13 +8,15 @@ use bevy::{
     pbr::PbrPlugin,
     prelude::*,
     reflect::TypePath,
-    render::render_resource::{AsBindGroup, ShaderType},
+    render::{
+        render_resource::{AsBindGroup, ShaderType},
+        RenderPassMask, RenderPasses,
+    },
     shader::ShaderRef,
 };
 
 /// This example uses a shader source file from the assets subdirectory
 const PREPASS_SHADER_ASSET_PATH: &str = "shaders/show_prepass.wgsl";
-const MATERIAL_SHADER_ASSET_PATH: &str = "shaders/custom_material.wgsl";
 
 fn main() {
     App::new()
@@ -26,7 +28,6 @@ fn main() {
                 // prepass_enabled: false,
                 ..default()
             }),
-            MaterialPlugin::<CustomMaterial>::default(),
             MaterialPlugin::<PrepassOutputMaterial>::default(),
         ))
         .add_systems(Startup, setup)
@@ -38,15 +39,14 @@ fn main() {
 fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<CustomMaterial>>,
     mut std_materials: ResMut<Assets<StandardMaterial>>,
     mut depth_materials: ResMut<Assets<PrepassOutputMaterial>>,
-    asset_server: Res<AssetServer>,
+    _asset_server: Res<AssetServer>,
 ) {
     // camera
     commands.spawn((
         Camera3d::default(),
-        Transform::from_xyz(-2.0, 3., 5.0).looking_at(Vec3::ZERO, Vec3::Y),
+        Transform::from_xyz(0.0, 3.0, 6.0).looking_at(Vec3::ZERO, Vec3::Y),
         // Disabling MSAA for maximum compatibility. Shader prepass with MSAA needs GPU capability MULTISAMPLED_SHADING
         Msaa::Off,
         // To enable the prepass you need to add the components associated with the ones you need
@@ -60,8 +60,17 @@ fn setup(
 
     // plane
     commands.spawn((
-        Mesh3d(meshes.add(Plane3d::default().mesh().size(5.0, 5.0))),
+        Mesh3d(meshes.add(Plane3d::default().mesh().size(50.0, 50.0))),
         MeshMaterial3d(std_materials.add(Color::srgb(0.3, 0.5, 0.3))),
+        Transform::from_xyz(0.0, -1.0, 0.0),
+        // Disable Motion Vector prepass for the plane so it doesn't overwrite
+        // the "Motion Vector Only" cube (which doesn't write depth).
+        RenderPasses(
+            RenderPassMask::MAIN
+                | RenderPassMask::DEPTH_PREPASS
+                | RenderPassMask::NORMAL_PREPASS
+                | RenderPassMask::SHADOW,
+        ),
     ));
 
     // A quad that shows the outputs of the prepass
@@ -76,39 +85,65 @@ fn setup(
         NotShadowCaster,
     ));
 
-    // Opaque cube
-    commands.spawn((
-        Mesh3d(meshes.add(Cuboid::default())),
-        MeshMaterial3d(materials.add(CustomMaterial {
-            color: LinearRgba::WHITE,
-            color_texture: Some(asset_server.load("branding/icon.png")),
-            alpha_mode: AlphaMode::Opaque,
-        })),
-        Transform::from_xyz(-1.0, 0.5, 0.0),
-        Rotates,
-    ));
-
-    // Cube with alpha mask
+    // 1. White Cube: Main Pass Only
+    // Should NOT appear in any prepass view (Depth, Normal, Motion Vectors)
     commands.spawn((
         Mesh3d(meshes.add(Cuboid::default())),
         MeshMaterial3d(std_materials.add(StandardMaterial {
-            alpha_mode: AlphaMode::Mask(1.0),
-            base_color_texture: Some(asset_server.load("branding/icon.png")),
+            base_color: Color::WHITE,
+            ..default()
+        })),
+        Transform::from_xyz(-3.0, 0.5, 0.0),
+        RenderPasses(RenderPassMask::MAIN),
+    ));
+
+    // 2. Red Cube: Depth Prepass Only
+    // Should ONLY appear in the Depth view
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::default())),
+        MeshMaterial3d(std_materials.add(StandardMaterial {
+            base_color: Color::srgb(1.0, 0.0, 0.0),
+            ..default()
+        })),
+        Transform::from_xyz(-1.5, 0.5, 0.0),
+        RenderPasses(RenderPassMask::MAIN | RenderPassMask::DEPTH_PREPASS),
+    ));
+
+    // 3. Green Cube: Normal Prepass Only
+    // Should ONLY appear in the Normals view
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::default())),
+        MeshMaterial3d(std_materials.add(StandardMaterial {
+            base_color: Color::srgb(0.0, 1.0, 0.0),
             ..default()
         })),
         Transform::from_xyz(0.0, 0.5, 0.0),
+        RenderPasses(RenderPassMask::MAIN | RenderPassMask::NORMAL_PREPASS),
     ));
 
-    // Cube with alpha blending.
-    // Transparent materials are ignored by the prepass
+    // 4. Blue Cube: Motion Vector Prepass Only
+    // Should ONLY appear in the Motion Vectors view
     commands.spawn((
         Mesh3d(meshes.add(Cuboid::default())),
-        MeshMaterial3d(materials.add(CustomMaterial {
-            color: LinearRgba::WHITE,
-            color_texture: Some(asset_server.load("branding/icon.png")),
-            alpha_mode: AlphaMode::Blend,
+        MeshMaterial3d(std_materials.add(StandardMaterial {
+            base_color: Color::srgb(0.0, 0.0, 1.0),
+            ..default()
         })),
-        Transform::from_xyz(1.0, 0.5, 0.0),
+        Transform::from_xyz(1.5, 0.5, 0.0),
+        RenderPasses(RenderPassMask::MAIN | RenderPassMask::MOTION_VECTOR_PREPASS),
+        Rotates,
+    ));
+
+    // 5. Yellow Cube: All Prepasses
+    // Should appear in ALL prepass views
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::default())),
+        MeshMaterial3d(std_materials.add(StandardMaterial {
+            base_color: Color::srgb(1.0, 1.0, 0.0),
+            ..default()
+        })),
+        Transform::from_xyz(3.0, 0.5, 0.0),
+        RenderPasses(RenderPassMask::MAIN | RenderPassMask::PREPASS),
     ));
 
     // light
@@ -134,37 +169,15 @@ fn setup(
             TextSpan::new("Controls\n"),
             TextSpan::new("---------------\n"),
             TextSpan::new("Space - Change output\n"),
+            TextSpan::new("\n\n"),
+            TextSpan::new("Cubes (Left to Right):\n"),
+            TextSpan::new("1. White:  Main Pass Only (No Prepass)\n"),
+            TextSpan::new("2. Red:    Depth Prepass Only\n"),
+            TextSpan::new("3. Green:  Normal Prepass Only\n"),
+            TextSpan::new("4. Blue:   Motion Vector Prepass Only\n"),
+            TextSpan::new("5. Yellow: All Prepasses\n"),
         ],
     ));
-}
-
-// This is the struct that will be passed to your shader
-#[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
-struct CustomMaterial {
-    #[uniform(0)]
-    color: LinearRgba,
-    #[texture(1)]
-    #[sampler(2)]
-    color_texture: Option<Handle<Image>>,
-    alpha_mode: AlphaMode,
-}
-
-/// Not shown in this example, but if you need to specialize your material, the specialize
-/// function will also be used by the prepass
-impl Material for CustomMaterial {
-    fn fragment_shader() -> ShaderRef {
-        MATERIAL_SHADER_ASSET_PATH.into()
-    }
-
-    fn alpha_mode(&self) -> AlphaMode {
-        self.alpha_mode
-    }
-
-    // You can override the default shaders used in the prepass if your material does
-    // anything not supported by the default prepass
-    // fn prepass_fragment_shader() -> ShaderRef {
-    //     "shaders/custom_material.wgsl".into()
-    // }
 }
 
 #[derive(Component)]
@@ -198,7 +211,7 @@ impl Material for PrepassOutputMaterial {
         PREPASS_SHADER_ASSET_PATH.into()
     }
 
-    // This needs to be transparent in order to show the scene behind the mesh
+    // This needs to be transparent in order to show the scene behind the quad
     fn alpha_mode(&self) -> AlphaMode {
         AlphaMode::Blend
     }

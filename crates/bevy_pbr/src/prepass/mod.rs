@@ -453,6 +453,9 @@ impl PrepassPipeline {
         }
         if mesh_key.contains(MeshPipelineKey::NORMAL_PREPASS) {
             shader_defs.push("NORMAL_PREPASS".into());
+            if mesh_key.contains(MeshPipelineKey::NORMAL_PREPASS_SUPPRESS) {
+                shader_defs.push("NORMAL_PREPASS_SUPPRESS".into());
+            }
         }
         if mesh_key.intersects(MeshPipelineKey::NORMAL_PREPASS | MeshPipelineKey::DEFERRED_PREPASS)
         {
@@ -490,6 +493,9 @@ impl PrepassPipeline {
         }
         if mesh_key.contains(MeshPipelineKey::MOTION_VECTOR_PREPASS) {
             shader_defs.push("MOTION_VECTOR_PREPASS".into());
+            if mesh_key.contains(MeshPipelineKey::MOTION_VECTOR_PREPASS_SUPPRESS) {
+                shader_defs.push("MOTION_VECTOR_PREPASS_SUPPRESS".into());
+            }
         }
         if mesh_key.contains(MeshPipelineKey::HAS_PREVIOUS_SKIN) {
             shader_defs.push("HAS_PREVIOUS_SKIN".into());
@@ -527,6 +533,17 @@ impl PrepassPipeline {
             mesh_key.contains(MeshPipelineKey::MOTION_VECTOR_PREPASS),
             mesh_key.contains(MeshPipelineKey::DEFERRED_PREPASS),
         );
+
+        if mesh_key.contains(MeshPipelineKey::NORMAL_PREPASS_SUPPRESS) {
+            if let Some(Some(target)) = targets.get_mut(0) {
+                target.write_mask = ColorWrites::empty();
+            }
+        }
+        if mesh_key.contains(MeshPipelineKey::MOTION_VECTOR_PREPASS_SUPPRESS) {
+            if let Some(Some(target)) = targets.get_mut(1) {
+                target.write_mask = ColorWrites::empty();
+            }
+        }
 
         if targets.iter().all(Option::is_none) {
             // if no targets are required then clear the list, so that no fragment shader is required
@@ -594,7 +611,7 @@ impl PrepassPipeline {
             },
             depth_stencil: Some(DepthStencilState {
                 format: CORE_3D_DEPTH_FORMAT,
-                depth_write_enabled: true,
+                depth_write_enabled: !mesh_key.contains(MeshPipelineKey::DEPTH_PREPASS_SUPPRESS),
                 depth_compare: CompareFunction::GreaterEqual,
                 stencil: StencilState {
                     front: StencilFaceState::IGNORE,
@@ -814,6 +831,7 @@ pub fn specialize_prepass_material_meshes(
     render_material_instances: Res<RenderMaterialInstances>,
     render_lightmaps: Res<RenderLightmaps>,
     render_visibility_ranges: Res<RenderVisibilityRanges>,
+    render_passes: Query<&RenderPasses>,
     view_key_cache: Res<ViewKeyPrepassCache>,
     views: Query<(
         &ExtractedView,
@@ -872,7 +890,7 @@ pub fn specialize_prepass_material_meshes(
             .entry(extracted_view.retained_view_entity)
             .or_default();
 
-        for (_, visible_entity) in visible_entities.iter::<Mesh3d>() {
+        for (render_entity, visible_entity) in visible_entities.iter::<Mesh3d>() {
             let Some(material_instance) = render_material_instances.instances.get(visible_entity)
             else {
                 continue;
@@ -908,6 +926,25 @@ pub fn specialize_prepass_material_meshes(
             };
 
             let mut mesh_key = *view_key | MeshPipelineKey::from_bits_retain(mesh.key_bits.bits());
+
+            if let Ok(render_passes) = render_passes.get(*render_entity) {
+                let mask = render_passes.0;
+                if view_key.contains(MeshPipelineKey::NORMAL_PREPASS)
+                    && !mask.contains(RenderPassMask::NORMAL_PREPASS)
+                {
+                    mesh_key |= MeshPipelineKey::NORMAL_PREPASS_SUPPRESS;
+                }
+                if view_key.contains(MeshPipelineKey::MOTION_VECTOR_PREPASS)
+                    && !mask.contains(RenderPassMask::MOTION_VECTOR_PREPASS)
+                {
+                    mesh_key |= MeshPipelineKey::MOTION_VECTOR_PREPASS_SUPPRESS;
+                }
+                if view_key.contains(MeshPipelineKey::DEPTH_PREPASS)
+                    && !mask.contains(RenderPassMask::DEPTH_PREPASS)
+                {
+                    mesh_key |= MeshPipelineKey::DEPTH_PREPASS_SUPPRESS;
+                }
+            }
 
             let alpha_mode = material.properties.alpha_mode;
             match alpha_mode {

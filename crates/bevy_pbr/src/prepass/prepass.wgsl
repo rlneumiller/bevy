@@ -184,7 +184,11 @@ fn fragment(in: VertexOutput) -> FragmentOutput {
     var out: FragmentOutput;
 
 #ifdef NORMAL_PREPASS
+#ifdef NORMAL_PREPASS_SUPPRESS
+    out.normal = vec4(0.0);
+#else
     out.normal = vec4(in.world_normal * 0.5 + vec3(0.5), 1.0);
+#endif
 #endif
 
 #ifdef UNCLIPPED_DEPTH_ORTHO_EMULATION
@@ -192,6 +196,9 @@ fn fragment(in: VertexOutput) -> FragmentOutput {
 #endif // UNCLIPPED_DEPTH_ORTHO_EMULATION
 
 #ifdef MOTION_VECTOR_PREPASS
+#ifdef MOTION_VECTOR_PREPASS_SUPPRESS
+    out.motion_vector = vec2(0.0);
+#else
     let clip_position_t = view.unjittered_clip_from_world * in.world_position;
     let clip_position = clip_position_t.xy / clip_position_t.w;
     let previous_clip_position_t = prepass_bindings::previous_view_uniforms.clip_from_world * in.previous_world_position;
@@ -203,6 +210,7 @@ fn fragment(in: VertexOutput) -> FragmentOutput {
     // range -2,2, so this needs to be scaled by 0.5. And the V direction goes
     // down where clip space y goes up, so y needs to be flipped.
     out.motion_vector = (clip_position - previous_clip_position) * vec2(0.5, -0.5);
+#endif
 #endif // MOTION_VECTOR_PREPASS
 
 #ifdef DEFERRED_PREPASS

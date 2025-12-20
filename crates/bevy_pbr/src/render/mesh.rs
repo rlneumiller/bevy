@@ -2183,7 +2183,10 @@ bitflags::bitflags! {
         const DISTANCE_FOG                      = 1 << 21;
         const ATMOSPHERE                        = 1 << 22;
         const INVERT_CULLING                    = 1 << 23;
-        const LAST_FLAG                         = Self::INVERT_CULLING.bits();
+        const DEPTH_PREPASS_SUPPRESS            = 1 << 24;
+        const NORMAL_PREPASS_SUPPRESS           = 1 << 25;
+        const MOTION_VECTOR_PREPASS_SUPPRESS    = 1 << 26;
+        const LAST_FLAG                         = Self::MOTION_VECTOR_PREPASS_SUPPRESS.bits();
 
         // Bitfields
         const MSAA_RESERVED_BITS                = Self::MSAA_MASK_BITS << Self::MSAA_SHIFT_BITS;
