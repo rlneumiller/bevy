@@ -1473,7 +1473,7 @@ type GpuMeshExtractionQuery = (
     Has<NotShadowCaster>,
     Has<NoAutomaticBatching>,
     Has<VisibilityRange>,
-    Option<Read<RenderLayers>>,
+    Option<Read<RenderLayers>>, 
 );
 
 /// Extracts meshes from the main world into the render world and queues
